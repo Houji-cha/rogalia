@@ -298,7 +298,7 @@ var util = new function() {
 
     this.date = {
         human: function(date) {
-            return date.toLocaleDateString(game.lang);
+            return date.toLocaleDateString("ru-RU"); // TODO: use user's locale
         },
         iso: function(date) {
             return date.toISOString().slice(0, 10);
