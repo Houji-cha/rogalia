@@ -1,4 +1,4 @@
-/* global dom, Panel, game, localStorage, TT, config, util, TS, T, ChatRing, Settings */
+/* global dom, Panel, game, TT, config, util, TS, T, ChatRing, Settings, Character, playerStorage */
 
 "use strict";
 function Chat() {
@@ -335,6 +335,9 @@ function Chat() {
             case "blacklist-remove":
                 game.network.send(cmd, {Name: arg});
                 break;
+            case "ping":
+                self.addMessage(`ping: ${game.controller.ping}`);
+                break;
             case "add":
                 if (Entity.templates[arg]) {
                     game.controller.newCreatingCursor(arg);
@@ -363,18 +366,16 @@ function Chat() {
                 new Panel(
                     "terra-bar",
                     "Terraforming",
-                    game.map.bioms.map(function(biom, i) {
-                        return dom.wrap(
-                            "slot",
-                            game.map.tiles[i],
-                            {
-                                title: biom.Name,
-                                onclick: function() {
-                                    game.controller.terraCursor(game.map.tiles[i]);
-                                }
+                    dom.wrap("slots-wrapper", game.map.bioms.map((biom, i) => dom.wrap(
+                        "slot",
+                        game.map.tiles[i],
+                        {
+                            title: biom.Name,
+                            onclick: function() {
+                                game.controller.terraCursor(game.map.tiles[i]);
                             }
-                        );
-                    })
+                        }
+                    )))
                 ).show();
                 break;
             case "to" :
@@ -420,7 +421,7 @@ function Chat() {
             this.detach();
         }
 
-        if (localStorage.getItem("chat.alwaysVisible") == "false") {
+        if (playerStorage.getItem("chat.alwaysVisible") === false) {
             semi.always = false;
             this.panel.contents.classList.add("semi-hidden");
         }
@@ -433,6 +434,7 @@ function Chat() {
         dom.move(this.panel.element, game.world);
         this.panel.element.classList.add("attached-chat");
         this.panel.element.classList.remove("detached-chat");
+        this.panel.canSnap = false;
         this.panel.hideTitle();
         dom.hide(this.panel.button);
         semihide();
@@ -443,6 +445,7 @@ function Chat() {
         dom.move(this.panel.element, document.body);
         this.panel.element.classList.remove("attached-chat");
         this.panel.element.classList.add("detached-chat");
+        this.panel.canSnap = true;
         this.panel.showTitle();
         dom.show(this.panel.button);
     };
@@ -451,7 +454,7 @@ function Chat() {
     alwaysVisible.classList.add("chat-settings-icon");
     alwaysVisible.onclick = () =>  {
         semi.always = !semi.always;
-        localStorage.setItem("chat.alwaysVisible", semi.always);
+        playerStorage.setItem("chat.alwaysVisible", semi.always);
         this.panel.contents.classList.toggle("semi-hidden");
     };
 
@@ -516,7 +519,7 @@ function Chat() {
         };
 
         var messagesElement = dom.div("messages");
-        messagesElement.innerHTML = localStorage.getItem("chat.log." + name) || "";
+        messagesElement.innerHTML = playerStorage.getItem("chat.log." + name) || "";
 
         tab.contents = [messagesElement];
         tab.messagesElement = messagesElement;
@@ -992,7 +995,7 @@ function Chat() {
 
     this.save = function() {
         tabs.forEach(function(tab) {
-            localStorage["chat.log." + tab.name] = tab.messagesElement.innerHTML;
+            playerStorage.setItem("chat.log." + tab.name, tab.messagesElement.innerHTML);
         });
         myMessages.saveToStorage();
     };
