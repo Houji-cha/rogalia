@@ -11,13 +11,14 @@ class Avatar {
 
         this.effects = dom.wrap("avatar-effects");
         const params = (character.isPlayer) ? ["Hp", "Fullness", "Stamina"] : ["Hp"];
-        this.bars = params.map(param => new ParamBar(param));
+        this.bars = params.map(param => new ParamBar(param, character[param]));
         const fullName = character.getFullName();
         const contents = dom.wrap("avatar-contents", [
             this.avatar,
             dom.wrap("avatar-info", [
                 dom.wrap("avatar-name", fullName, {title: fullName}),
                 dom.wrap("avatar-bars", this.bars.map(bar => bar.element)),
+                this.makeChevron(),
             ]),
         ]);
 
@@ -28,6 +29,12 @@ class Avatar {
     }
 
     setIcon(name) {
+    }
+
+    makeChevron() {
+        return (this.character.Style && this.character.Style.Chevron)
+            ? dom.img(`assets/icons/chevrons/${this.character.Style.Chevron}.png`, "avatar-chevron")
+            : null;
     }
 
     update() {
