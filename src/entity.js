@@ -1,4 +1,4 @@
-/* global dom, T, util, game, Panel, config, Point, Container, Character, BBox, TS, Permission, ParamBar, SlotMachine */
+/* global dom, T, util, game, Panel, config, Point, Container, Character, BBox, TS, Permission, ParamBar, SlotMachine, CELL_SIZE */
 
 "use strict";
 function Entity(type, id) {
@@ -40,9 +40,9 @@ Entity.prototype = {
     Dye: "",
     visibiliyObstacle: false,
     sprite: null,
-    _icon: null,
     _spriteVersion: "",
     graph: null,
+    tags: [],
     x: 0,
     y: 0,
     get X() {
@@ -215,7 +215,7 @@ Entity.prototype = {
         }
         elements.push(this.makeDescription());
 
-        if (this.isContainer() || this.Group == "gate") {
+        if (this.isContainer() || this.Group == "gate" || this.Group == "claim") {
             elements.push(dom.hr());
             elements.push(Permission.make(this.Id, this.Perm));
         }
@@ -303,9 +303,6 @@ Entity.prototype = {
         if (z != 0)
             return z;
 
-        // for topological sort test
-        // return (this.depth >= entity.depth) ? +1 : -1;
-
         var a = this.X + this.Y;
         var b = entity.X + entity.Y;
         return (a >= b) ? +1 : -1;
@@ -343,6 +340,15 @@ Entity.prototype = {
         case "bundle-of-wood":
         case "stone-pile":
         case "winepress":
+        case "bloody-altar":
+        case "bar-stand":
+        case "flower-pot":
+        case "wine-rack-small":
+        case "wine-rack-average":
+        case "wine-rack-big":
+        case "potions-cabinet-small":
+        case "potions-cabinet-average":
+        case "potions-cabinet-big":
             if (!this.Props.Slots)
                 break;
             if (this.Props.Slots.some(function(id){ return id != 0; }))
@@ -423,6 +429,12 @@ Entity.prototype = {
             gut();
         }
     },
+    plunder: function() {
+        game.popup.confirm(
+            T("Warning: This action can cause bad karma, continue at your own risk!"),
+            () => this.queueActionMaybe("Plunder")
+        );
+    },
     getActions: function() {
         var actions = [{}, {}, {}];
 
@@ -448,8 +460,13 @@ Entity.prototype = {
                 game.network.send("rotate", {id: this.Id});
             };
         }
-        if (!(game.player.Instance && game.player.Instance.match(/^tutorial-/)) || game.player.IsAdmin)
+        if (!(game.player.Instance && game.player.Instance.match(/^tutorial-/)) || game.player.IsAdmin) {
             actions[2]["Destroy"] = this.destroy;
+
+            if (this.MoveType == Entity.MT_STATIC) {
+                actions[2]["Relocate"] = this.relocate;
+            }
+        }
 
         if (this.Location == Entity.LOCATION_IN_CONTAINER || this.Location == Entity.LOCATION_EQUIPPED)
             actions[2]["Drop"] =  function() { game.network.send("entity-drop", {id: this.Id}); };
@@ -464,31 +481,17 @@ Entity.prototype = {
         return actions;
     },
     isTool: function() {
-        return _.includes([
-            "sword",
-            "shield",
-            "legs-armor",
-            "head-armor",
-            "body-armor",
-            "feet-armor",
-            "saw",
-            "axe",
-            "pickaxe",
-            "hammer",
-            "knife",
-            "shovel",
-            "spear",
-            "necklace",
-            "bow",
-            "energy-gun",
-            "scissors",
-            "needle",
+        const tags = [
+            "tool",
+            "armor",
+            "weapon",
+            "accessory",
             "taming",
             "insect-net",
-            "tool",
             "fishing-rod",
-            "prospector",
-        ], this.Group);
+            "prospector"
+        ];
+        return this.tags.some(tag => tags.includes(tag));
     },
     canBeEquipped: function() {
         if (this.Location == Entity.LOCATION_EQUIPPED)
@@ -524,7 +527,7 @@ Entity.prototype = {
     defaultAction: function() {
         var self = this;
         function use() {
-            game.network.send("entity-use", { id: self.Id }, self.defaultActionSuccess.bind(self));
+            game.network.send("entity-use", {id: self.Id}, (data) => self.defaultActionSuccess(data));
         }
         switch (this.Type) {
         case "instance-exit":
@@ -542,6 +545,15 @@ Entity.prototype = {
     destroy: function() {
         this.actionApplySimple("entity-destroy");
     },
+    relocate: function() {
+        const ghost = new Entity(this.Type);
+        ghost.initSprite();
+        ghost.Id =  this.Id;
+        while (ghost.Orientation != this.Orientation) {
+            ghost.rotate(+1);
+        }
+        game.controller.creatingCursor(ghost, "relocate");
+    },
     actionApplySimple: function(action) {
         if (this.isContainer()) {
             game.popup.confirm(T("It will be destroyed with all it's contents"), () => game.network.send(action, {id: this.Id}));
@@ -557,15 +569,15 @@ Entity.prototype = {
                 game.network.send(action, {id: this.Id});
                 return;
             }
-            this.queueAction(action, container.filter(entity => entity && entity.is(this.Type)));
+            this.queueAction(action, container.filter(entity => entity.is(this.Type)));
         } else {
             if (Entity.repeatable(action)) {
                 game.controller.lastAction.set(() => {
                     // check if object was removed
                     if (Entity.get(this.Id)) {
-                        this.queueActionMaybe(action)
+                        this.queueActionMaybe(action);
                     }
-                })
+                });
             }
             game.network.send(action, {id: this.Id});
         }
@@ -712,6 +724,7 @@ Entity.prototype = {
         case "feeder":
         case "player-corpse":
         case "shredder":
+        case "altar":
             if (this.MoveType != Entity.MT_PORTABLE) {
                 this.defaultAction = () => this.open();
             }
@@ -840,7 +853,8 @@ Entity.prototype = {
                 this.CanCollide &&
                 this.X > game.player.X &&
                 this.Y > game.player.Y &&
-                this.intersects(game.player.X, game.player.Y)) {
+                this.intersects(game.player.X, game.player.Y)
+               ) {
                 this.sprite.drawAlpha(p, 0.2);
                 this.drawBox();
                 this.visibiliyObstacle = true;
@@ -1076,12 +1090,17 @@ Entity.prototype = {
 
         var cmd = "entity-drop";
         var align = false;
-        if ((biom.Name == "plowed-soil" || biom.Name == "soil") && this.is("seed")) {
-            cmd = "plant";
-            align = true;
-        } else if ((biom.Name == "plowed-soil" || biom.Name == "shallow-water") && this.is("soil")) {
-            cmd = "swamp";
-            align = true;
+        // TODO: refactor
+        if (this.is("seed")) {
+            if (biom.Name == "plowed-soil" || biom.Name == "soil") {
+                cmd = "plant";
+                align = true;
+            }
+        } else if (this.is("soil")) {
+            if (biom.Name == "plowed-soil" || biom.Name == "shallow-water") {
+                cmd = "swamp";
+                align = true;
+            }
         }
         if (align) {
             var p = new Point(x, y);
@@ -1142,10 +1161,9 @@ Entity.prototype = {
         return false;
     },
     icon: function() {
-        if (this._icon)
-            return this._icon.cloneNode();
-        if (!this.sprite)
+        if (!this.sprite) {
             this.initSprite();
+        }
         return this.sprite.icon();
     },
     rotate: function(delta) {
@@ -1274,6 +1292,7 @@ Entity.prototype = {
             "Get creator": send("get-creator"),
             "Set comment": prepare("set-comment"),
             "Finish building": send("finish-building"),
+            "Fill building": send("fill-building"),
             "Summon": send("summon"),
             "100q": function() {
                 game.chat.send("*set-quality " + self.Id + " " + 100);
@@ -1325,5 +1344,5 @@ Entity.prototype = {
             width,
             height
         );
-    }
+    },
 };

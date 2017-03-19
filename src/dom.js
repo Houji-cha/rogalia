@@ -16,6 +16,9 @@ var dom = {
             if (cfg.onclick !== undefined)
                 elem.onclick = cfg.onclick;
 
+            if (cfg.onmousedown !== undefined)
+                elem.onmousedown = cfg.onmousedown;
+
             if (cfg.title !== undefined)
                 elem.title = cfg.title;
         }
@@ -103,8 +106,8 @@ var dom = {
         }
         return contents;
     },
-    make: function(tag, contents, classOrId) {
-        return this.append(this.tag(tag, classOrId), contents);
+    make: function(tag, contents, classOrId, cfg) {
+        return this.append(this.tag(tag, classOrId, cfg), contents);
     },
     append: function(element, contents) {
         if (Array.isArray(contents)) {
@@ -121,6 +124,64 @@ var dom = {
     },
     wrap: function(classOrId, elements, cfg) {
         return this.append(dom.div(classOrId, cfg), elements);
+    },
+    scrollable: function(classOrId, elements) {
+        const handle = this.wrap("scroll-handle");
+        const scroll = this.wrap("scroll", handle);
+        const contents = dom.wrap("scrollable-contents", elements);
+        const element = dom.wrap(classOrId, this.wrap("scrollable-wrapper", [
+            contents,
+            scroll,
+        ]));
+
+        element.addEventListener("mouseenter", update);
+        element.addEventListener("mouseleave", update);
+        element.addEventListener("click", update);
+        element.addEventListener("keydown", update);
+        element.classList.add("scrollable");
+
+        let y = 0;
+        contents.addEventListener("scroll", function(event) {
+            const height = contents.scrollHeight - element.offsetHeight;
+            const top = contents.scrollTop/height;
+            handle.style.top = top * 100 + "%";
+        });
+
+        scroll.onmousedown = function(event) {
+            scroll.classList.add("active");
+            if (event.target == scroll) {
+                y = scroll.getBoundingClientRect().top;
+                onmousemove(event);
+            } else {
+                y = event.pageY - handle.offsetTop;
+            }
+            window.addEventListener("mousemove", onmousemove);
+            window.addEventListener("mouseup", function cancel() {
+                scroll.classList.remove("active");
+                window.removeEventListener("mouseup", cancel);
+                window.removeEventListener("mousemove", onmousemove);
+            });
+        };
+
+        element.contents = contents;
+        return element;
+
+        function update() {
+            if (contents.scrollHeight > contents.clientHeight) {
+                dom.show(scroll);
+            } else {
+                dom.hide(scroll);
+            }
+        }
+
+        function onmousemove(event) {
+            event.stopPropagation();
+            event.preventDefault();
+            const maxY = scroll.clientHeight - handle.clientHeight;
+            const newY = Math.max(0, Math.min(event.pageY - y, maxY));
+            const height = contents.scrollHeight - element.offsetHeight;
+            contents.scrollTop = newY/maxY * height;
+        };
     },
     // TODO: use dom.append() instead?
     appendText: function(element, text) {
@@ -153,7 +214,7 @@ var dom = {
     },
     range: function(value, onchange) {
         const handle = dom.div("handle");
-        const range = this.wrap("range", handle)
+        const range = this.wrap("range", handle);
         let x = 0;
 
         handle.style.left = value * 100 + "%";
@@ -219,24 +280,29 @@ var dom = {
     },
     hide: function(element) {
         element.classList.add("hidden");
+        return element;
     },
     show: function(element) {
         element.classList.remove("hidden");
+        return element;
     },
     toggle: function(element) {
-        if(element.classList.contains("hidden"))
-            this.show(element);
-        else
-            this.hide(element);
+        return (element.classList.contains("hidden"))
+            ? this.show(element)
+            : this.hide(element);
+    },
+    hidden: function(element) {
+        return element.classList.contains("hidden");
     },
     replace: function(old, New) {
         if (!old.parentNode) {
             console.trace();
-            console.error("Cannot replace node");
-            return;
+            console.error("Cannot replace node", old);
+            return old;
         }
         old.parentNode.insertBefore(New, old);
         old.parentNode.removeChild(old);
+        return New;
     },
     swap: function(one, two) {
         const parent = two.parentNode;
@@ -255,7 +321,7 @@ var dom = {
     /* * * * * */
     forEach: function(selector, callback) {
         [].forEach.call(document.querySelectorAll(selector), function(elem) {
-            callback.call(elem);
+            callback.call(elem, elem);
         });
     },
     addClass: function(selector, name) {
@@ -286,7 +352,7 @@ var dom = {
         var contents = dom.div("tabs-contents");
 
         cfg.forEach(function(tab, index) {
-            var title = dom.div("tab-title");
+            var title = dom.div("tab-title", {title: tab.title});
             title.style.zIndex = cfg.length - index;
             if (tab.icon) {
                 tab.icon.classList.add("tab-icon");

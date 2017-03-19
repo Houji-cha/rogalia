@@ -135,7 +135,14 @@ Character.prototype = {
     },
     leftTopX: Entity.prototype.leftTopX,
     leftTopY: Entity.prototype.leftTopY,
-    compare: Entity.prototype.compare,
+    compare: function(entity) {
+        if (this.Effects.Sitting && this.Effects.Sitting.SeatId == entity.Id) {
+            return (entity.Orientation == "n" || entity.Orientation == "w")
+                ? +1
+                : -1;
+        }
+        return Entity.prototype.compare.call(this, entity);
+    },
     get statusPoints() {
         return {
             Current: this.Citizenship.StatusPoints,
@@ -215,7 +222,11 @@ Character.prototype = {
             }
 
             if (data.Style) {
-                game.controller.updatePlayerAvatar(this);
+                game.controller.initPlayerAvatar(this);
+            }
+
+            if (data.Equip && game.controller.craft) {
+                game.controller.craft.updateSearch();
             }
         }
     },
@@ -250,6 +261,9 @@ Character.prototype = {
                     },
                     avatar() {
                         return loader.loadImage("characters/avatars/new.png", true);
+                    },
+                    chevron() {
+                        return null;
                     },
                 });
                 avatar.element.title = T("Out of sight");
@@ -627,6 +641,15 @@ Character.prototype = {
                 dy = 16;
                 break;
             }
+        } else if (this.Effects.Sitting) {
+            const sit = Entity.get(this.Effects.Sitting.SeatId);
+            if (sit) {
+                switch (sit.Type) {
+                case "bar-stool":
+                    dy = 12;
+                    break;
+                }
+            }
         }
         return {
             p: p,
@@ -980,11 +1003,15 @@ Character.prototype = {
                 flag.draw({x: x - 20, y: y - dy/2  - 14});
             }
 
-            if (this.Style && this.Style.Chevron) {
-                const chevron = loader.loadImage(`icons/chevrons/${this.Style.Chevron}.png`);
-                chevron.width && game.ctx.drawImage(chevron, x + nameWidth + 5, y - dy/2  - 14, 16, 16);
+            const chevron = this.chevron();
+            if (chevron) {
+                const img = loader.loadImage(`icons/chevrons/${this.Style.Chevron}.png`);
+                img.width && game.ctx.drawImage(img, x + nameWidth + 5, y - dy/2  - 14, 16, 16);
             }
         }
+    },
+    chevron: function() {
+        return this.Style && this.Style.Chevron;
     },
     flag: function() {
         if (this.Team)
@@ -1191,9 +1218,7 @@ Character.prototype = {
             if (this.target && !game.entities.has(this.target.Id))
                 this.setTarget(null);
 
-            if (config.graphics.autoHideWalls) {
-                this.updateBuilding();
-            }
+            this.updateBuilding();
             this.updateActionButton();
         }
 
@@ -1207,6 +1232,12 @@ Character.prototype = {
 
     },
     updateBuilding: function() {
+        if (!config.graphics.autoHideWalls) {
+            return;
+            // this.inBuilding = game.entities.some(entity => {
+            //     return entity.Disposition == "roof" && this.isNear(entity);
+            // });
+        }
         var n = false, w = false, s = false,  e = false;
         var x = this.X;
         var y = this.Y;
@@ -1687,9 +1718,7 @@ Character.prototype = {
         return this.Equip
             .filter(Number)
             .map(Entity.get)
-            .some(function(item) {
-                return (item.Group == group);
-            });
+            .some(item => item.Group == group);
     },
     icon: function() {
         if (!this._icon)

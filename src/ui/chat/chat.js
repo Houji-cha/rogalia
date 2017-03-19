@@ -70,7 +70,10 @@ function Chat() {
 
         var actions = [
             {
-                privateMessage: () => self.preparePrivate(name)
+                privateMessage: () => self.preparePrivate(name),
+                // trade: function() {
+                //     game.network.send("trade", {Name: "offer", Trader: this.Id});
+                // },
             },
             "---",
             partyActions,
@@ -518,10 +521,12 @@ function Chat() {
             this.newMessageElement.focus();
         };
 
-        var messagesElement = dom.div("messages");
-        messagesElement.innerHTML = playerStorage.getItem("chat.log." + name) || "";
 
-        tab.contents = [messagesElement];
+        const scrollable = dom.scrollable("messages-wrapper");
+        const messagesElement = scrollable.contents;
+        messagesElement.classList.add("messages");
+        messagesElement.innerHTML = playerStorage.getItem("chat.log." + name) || "";
+        tab.contents = scrollable;
         tab.messagesElement = messagesElement;
 
         return tab;
@@ -529,7 +534,7 @@ function Chat() {
 
     var tabElem = dom.tabs(tabs);
     tabElem.contents.appendChild(this.newMessageElement);
-    tabElem.contents.id = "chat-wrapper";
+    tabElem.contents.classList.add("chat-wrapper");
     tabElem.addEventListener("mousedown", onmousedown);
 
     tabElem.insertBefore(dom.hr(), tabElem.contents);
@@ -777,24 +782,24 @@ function Chat() {
             var element = tab.messagesElement;
             var m = elem.cloneNode(true);
             element.appendChild(m);
-            cleanUpTab(element);
 
-            if (tab.isActive()) {
-                var scroll = (element.scrollHeight - element.scrollTop <= element.clientHeight + 4*m.clientHeight);
-                if (scroll)
-                    scrollToTheEnd(element);
-            }
-
+            _.defer(function() {
+                const diff = (element.scrollHeight - element.scrollTop) - (element.clientHeight + m.clientHeight);
+                if (Math.abs(diff) < 1) {
+                    if (tab.isActive()) {
+                        scrollToTheEnd(element);
+                    }
+                    cleanUpTab(element);
+                }
+            });
         });
     }
 
-    var maxMessages = 128;
+    const maxMessages = 128;
     function cleanUpTab(messagesElement) {
-        var len = messagesElement.children.length;
+        let len = messagesElement.children.length;
         while (len-- >= maxMessages) {
-            var height = messagesElement.firstChild.clientHeight;
             dom.remove(messagesElement.firstChild);
-            messagesElement.scrollTop -= height;
         }
     };
 

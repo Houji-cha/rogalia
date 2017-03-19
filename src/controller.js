@@ -99,7 +99,7 @@ function Controller(game) {
             this.entity = null;
             dom.clear(this.element);
         },
-        set: function(entity, x, y, cleanup) {
+        set: function(entity, x, y, cleanup = () => {}) {
             var icon = entity.icon();
             dom.clear(this.element);
             this.element.appendChild(icon);
@@ -110,8 +110,6 @@ function Controller(game) {
             this.element.style.marginTop = -entity.getDrawDy() + "px";
 
             this.entity = entity;
-
-            cleanup = cleanup || function(){};
 
             controller.callback[controller.RMB] = function(e) {
                 cleanup();
@@ -132,21 +130,19 @@ function Controller(game) {
                         return hovered.use(entity);
                     }
 
-                    if (hovered.mail) {
+                    if (hovered.mail || hovered.trade || hovered.craft) {
                         cleanup = function(){};
                         return hovered.use(entity);
                     }
 
-                    if (hovered.craft) {
-                        cleanup = function(){};
-                        return controller.craft.use(entity, hovered);
+                    if (hovered.vendor) {
+                        return hovered.use(entity, hovered);
                     }
 
-                    if (hovered.build)
+                    if (hovered.build) {
                         return controller.craft.blank.use(entity);
+                    }
 
-                    if (hovered.vendor)
-                        return hovered.use(entity, hovered);
 
                     if (hovered.containerSlot) {
                         var slot = hovered.containerSlot;
@@ -294,6 +290,7 @@ function Controller(game) {
         if (this.party.avatars) {
             this.party.avatars.forEach(avatar => avatar.update());
         }
+        this.avatar.update();
 
         this.updateCamera();
         if (this.world.cursor instanceof Entity || this.cursor.entity)
@@ -311,7 +308,6 @@ function Controller(game) {
         this.minimap.update();
         var now = Date.now();
         if (now - lastTickUpdate > 500) {
-            this.avatar.update();
             this.effects.update();
             lastTickUpdate = now;
             _.forEach(game.containers, (cnt) => cnt.visible && cnt.updateProgress());
@@ -356,7 +352,10 @@ function Controller(game) {
         containers.forEach(cnt => cnt.panel.hide());
     };
 
-    this.updatePlayerAvatar = function(player) {
+    this.initPlayerAvatar = function(player) {
+        if (this.avatar) {
+            return;
+        }
         this.avatar = new Avatar(player);
         dom.setContents(document.getElementById("player-avatar"), this.avatar.element);
     };
@@ -796,13 +795,14 @@ function Controller(game) {
         };
     };
 
-    this.newCreatingCursor = function(type, command, callback) {
+    this.newCreatingCursor = function(type, command, callback, cancel) {
         var entity = new Entity(type);
         entity.initSprite();
-        return this.creatingCursor(entity, command, callback);
+        return this.creatingCursor(entity, command, callback, cancel);
     };
 
-    this.creatingCursor = function(entity, command = "entity-add", callback) {
+    this.creatingCursor = function(entity, command = "entity-add", callback, cancel) {
+
         this.world.cursor = entity;
 
         if (this.lastAction.type != entity.Type)
@@ -813,8 +813,12 @@ function Controller(game) {
         }
 
         this.lastAction.set(() => {
-            this.newCreatingCursor(entity.Type, command, callback);
+            this.newCreatingCursor(entity.Type, command, callback, cancel);
         }, entity.Type);
+
+        if (cancel) {
+            this.callback[this.RMB] = () => { cancel(); return true; };
+        }
 
         this.callback[this.LMB] = function() {
             if (!controller.mouse.isValid())
@@ -830,10 +834,16 @@ function Controller(game) {
                 x: p.x,
                 y: p.y,
             };
-            if (entity.Id)
+
+            if (entity.Id) {
                 args.Id = entity.Id;
-            if (entity.Orientation)
+            }
+            if (entity.Orientation) {
                 args.Orientation = entity.Orientation;
+            }
+            if (entity.hasOwnProperty("Variant")) {
+                args.Variant = entity.Variant;
+            }
 
             var pushToQueue = !!game.controller.modifier.shift;
             if (pushToQueue) {
@@ -845,8 +855,6 @@ function Controller(game) {
             } else {
                 game.controller.actionQueue = [];
                 game.network.send(command, args, callback);
-                if (this.world.cursor instanceof Entity)
-                    game.sortedEntities.remove(this.world.cursor);
             }
 
             this.clearCursors();
@@ -881,6 +889,7 @@ function Controller(game) {
         game.network.queue = [];
         this.clearActionQueue();
         this.hideUnnecessaryPanels();
+        this.craft.stop();
     };
 
     this.clearActionQueue = function(data) {
@@ -895,8 +904,13 @@ function Controller(game) {
 
     this.clearCursors = function() {
         // clicking on player launches action, so don't cancel it
-        if (this.world.hovered != game.player)
+        if (this.world.hovered != game.player) {
+            const {cursor} = this.world;
+            if (cursor && cursor.Id && cursor.inWorld()) {
+                game.sortedEntities.remove(cursor);
+            }
             this.world.cursor = null;
+        }
 
         this.world.hovered = null;
         this.hovered = null;
@@ -1382,7 +1396,7 @@ function Controller(game) {
             checked[container.id] = true;
             container.update();
             var containers = [];
-            container.forEach(function(slot) {
+            container.slots.forEach(function(slot) {
                 if (!slot.entity)
                     return;
 

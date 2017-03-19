@@ -2,17 +2,19 @@
 
 "use strict";
 function Users() {
+    let onlineSet = new Set();
     var lists = {};
 
     function renderList(content, list, empty) {
-        dom.setContents(
-            content,
-            (list)
-                ? [
-                    dom.make("p", T("Total") + ": " + list.length),
-                    isFriendList(list) ? makeFriendList(list) : makeSimpleList(list)
-                ] : T(empty)
-        );
+        if (!list) {
+            dom.setContents(content, T(empty));
+            return;
+        }
+        dom.setContents(content, [
+            isFriendList(list) ? makeFriendList(list) : makeSimpleList(list),
+            dom.hr(),
+            dom.wrap("user-total", T("Total") + ": " + list.length),
+        ]);
     }
 
     function isFriendList(list) {
@@ -20,12 +22,17 @@ function Users() {
     }
 
     function makeSimpleList(list) {
-        return dom.make("ul", list.sort().map(function(name) {
-            const li = dom.tag("li", "", {text: name});
-            li.onmousedown = function(e) {
-                return game.chat.nameMenu(e, name);
-            };
-            return li;
+        return dom.scrollable("user-list", list.sort().map(function(name, i) {
+            return dom.wrap(
+                "user",
+                [
+                    (i + 1) + ". ",
+                    name,
+                ],
+                {
+                    onmousedown: (e) => game.chat.nameMenu(e, name),
+                }
+            );
         }));
     }
 
@@ -33,12 +40,19 @@ function Users() {
         list.sort(function(a, b) {
             return a.Name.localeCompare(b.Name);
         });
-        return dom.make("ul", list.map(function({Id, Name, Perm}) {
-            const name = dom.span(Name);
-            name.onmousedown = function(e) {
-                return game.chat.nameMenu(e, Name);
-            };
-            return dom.make("li", [name, Permission.make(Id, Perm)]);
+        return dom.scrollable("user-list", list.map(function({Id, Name, Perm}, i) {
+            return dom.wrap(
+                "user",
+                [
+                    (i + 1) + ". ",
+                    Name,
+                    dom.wrap("user-online", onlineSet.has(Name) ? "✔" : "", {title: T("Online")}),
+                    Permission.make(Id, Perm)
+                ],
+                {
+                    onmousedown: (e) => game.chat.nameMenu(e, Name),
+                }
+            );
         }));
     }
 
@@ -48,6 +62,9 @@ function Users() {
             data: data[selector] || [],
             empty: empty,
         };
+        if (selector == "OnlinePlayers") {
+            onlineSet =  new Set(list.data);
+        }
         lists[selector] = list;
         renderList(list.content, list.data, list.empty);
     }
@@ -93,6 +110,7 @@ function Users() {
     this.addPlayer = function(name) {
         if (name == game.playerName)
             return;
+        onlineSet.add(name);
         var list = lists.OnlinePlayers;
         if (list && list.data.indexOf(name) == -1) {
             list.data.push(name);
@@ -103,6 +121,7 @@ function Users() {
     this.removePlayer = function(name) {
         if (name == game.playerName)
             return;
+        onlineSet.delete(name);
         var list = lists.OnlinePlayers;
         if (list) {
             var data = list.data;

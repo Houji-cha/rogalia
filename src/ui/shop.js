@@ -99,7 +99,7 @@ function Shop() {
                     cards.push(card);
                     contents.push(card);
                 });
-                tabs[index].contents = dom.wrap("products", contents);
+                tabs[index].contents = dom.scrollable("products", contents);
             });
             self.tabs = dom.tabs(tabs);
             self.panel.setContents(self.tabs);
@@ -261,7 +261,8 @@ function Shop() {
 
     function recipeLink(product) {
         return dom.button(T("Recipe"), "product-recipe", function() {
-            game.controller.craft.search(product.Name.replace(/-wall$/, ""), true);
+            game.controller.craft.panel.show();
+            game.controller.craft.search(TS(product.Name.replace(/-wall$/, "")), true);
         });
     }
 }

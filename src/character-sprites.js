@@ -313,8 +313,8 @@ Character.spritesInfo = {
         height: 80,
     },
     "training-dummy": {
-        width: 80,
-        height: 80,
+        width: 55,
+        height: 67,
         angle: 0,
     },
     "blue-chopper": {
@@ -323,6 +323,11 @@ Character.spritesInfo = {
         offset: 30,
     },
     "red-chopper": {
+        width: 146,
+        height: 112,
+        offset: 30,
+    },
+    "pink-chopper": {
         width: 146,
         height: 112,
         offset: 30,
